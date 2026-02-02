@@ -1,0 +1,21 @@
+# Entorno virtual
+.venv/
+venv/
+ENV/
+
+# Archivos compilados de Python
+__pycache__/
+*.py[cod]
+
+# Datos sensibles de la empresa (CRÍTICO)
+data/
+*.xlsx
+*.xls
+
+# Logs de pruebas
+logs/
+*.log
+
+# Archivos de sistema/IDE
+.vscode/
+.idea/

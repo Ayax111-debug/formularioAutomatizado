@@ -36,7 +36,7 @@ def ejecutar_prueba_integrada():
     bot = RobotFormulario(modo_prueba=False, velocidad=0.3)
 
     # 6. Cargar datos (Solo procesaremos los primeros 3 para no estar años esperando)
-    df = pd.read_excel(ruta_excel).head(3) # <--- SOLO 3 REGISTROS
+    df = pd.read_excel(ruta_excel, dtype=str).head(3) # <--- SOLO 3 REGISTROS
     df = df.fillna('')
 
     print(f"🚀 Ejecutando carga de {len(df)} productos de prueba...")

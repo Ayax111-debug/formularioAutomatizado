@@ -1,145 +1,177 @@
 import pyautogui
 import time
 import os
+import keyboard  # <--- NUEVA LIBRERÍA
 from datetime import datetime
 
 class RobotFormulario:
     def __init__(self, modo_prueba=True, velocidad=0.5, log_path="logs/auditoria.txt"):
-        """
-        Inicializa el robot.
-        :param modo_prueba: Si es True, NO interactúa con el PC, solo escribe logs.
-        :param velocidad: Tiempo de espera entre acciones (segundos).
-        :param log_path: Ruta donde guardar el historial de pruebas.
-        """
         self.modo_prueba = modo_prueba
         self.velocidad = velocidad
         self.log_path = log_path
         
-        # Crear carpeta de logs si no existe
+        # Estado del Robot
+        self.pausado = False
+        self.detenido = False
+        
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
 
-        # Configuración de seguridad para modo real
         if not self.modo_prueba:
             pyautogui.PAUSE = self.velocidad
             pyautogui.FAILSAFE = True
 
+        # Configurar los "Oídos" del robot (Hotkeys)
+        # F8 alternará entre Pausa y Sigue
+        keyboard.add_hotkey('F8', self._toggle_pausa)
+        # ESC activará la bandera de detención
+        keyboard.add_hotkey('esc', self._detener_emergencia)
+
+        print("\n🎮 CONTROLES ACTIVADOS:")
+        print("   [F8]  = PAUSAR / REANUDAR")
+        print("   [ESC] = DETENER TODO\n")
+
+    def _toggle_pausa(self):
+        """Alterna el estado de pausa."""
+        self.pausado = not self.pausado
+        estado = "⏸️ PAUSADO" if self.pausado else "▶️ REANUDANDO..."
+        print(f"\n{estado}\n")
+
+    def _detener_emergencia(self):
+        """Detiene el script de forma segura."""
+        self.detenido = True
+        print("\n🛑 SEÑAL DE DETENCIÓN RECIBIDA (ESC)\n")
+
+    def _chequear_estado(self):
+        """
+        Esta función actúa como el 'Portero'.
+        Se ejecuta antes de cada acción para ver si debe parar o esperar.
+        """
+        # 1. Si presionaron ESC, lanzamos error para romper el bucle
+        if self.detenido:
+            raise KeyboardInterrupt("Detención manual por usuario (ESC)")
+
+        # 2. Si presionaron F8, entramos en un bucle infinito de espera
+        if self.pausado:
+            self._log("⏳ Robot en PAUSA... (Presiona F8 para continuar)")
+            while self.pausado:
+                # Si presionan ESC mientras está pausado, también salimos
+                if self.detenido:
+                     raise KeyboardInterrupt("Detención manual durante pausa")
+                time.sleep(0.5) # Espera pasiva sin consumir CPU
+            self._log("🚀 Reanudando operaciones...")
+
     def _log(self, mensaje):
-        """Escribe en el archivo de texto y en la consola."""
         timestamp = datetime.now().strftime("%H:%M:%S")
         linea = f"[{timestamp}] {mensaje}"
         print(linea)
-        
         with open(self.log_path, "a", encoding="utf-8") as f:
             f.write(linea + "\n")
 
     def _escribir(self, texto):
-        """Escribe el contenido de una celda del Excel."""
+        self._chequear_estado() # <--- VALIDACIÓN ANTES DE ACTUAR
+
         val = str(texto).strip()
         if val.lower() == 'nan' or val == '':
             return 
 
         if self.modo_prueba:
             self._log(f"⌨️  ESCRIBIR: '{val}'")
-        else:                                                               
-                   
-            # CORRECCIÓN AQUÍ:
-            # interval=0.05 significa "espera 50 milisegundos entre cada letra"
-            # Esto elimina el efecto "ARRRROZZ"
-            pyautogui.write(val, interval=0.08)
+        else:
+            pyautogui.write(val, interval=0.05)
 
-    def _presionar(self, tecla, veces=1):
-        """Presiona una tecla N veces."""
+    def _tab(self, cantidad=1):
+        if cantidad == 0: return
+        
+        self._chequear_estado() # <--- VALIDACIÓN ANTES DE ACTUAR
+
         if self.modo_prueba:
-            if veces > 1:
-                self._log(f"🔘 PRESIONAR: '{tecla}' (x{veces} veces)")
-            else:
-                self._log(f"🔘 PRESIONAR: '{tecla}'")
+            self._log(f"🔘 TAB (x{cantidad})")
         else:
-            # En modo real, a veces es mejor un loop pequeño para asegurar estabilidad
-            if tecla == 'tab' and veces > 10:
-                # Optimización para saltos largos (como el de 41 tabs)
-                for _ in range(veces):
-                    pyautogui.press(tecla)
+            if cantidad > 5:
+                original_pause = pyautogui.PAUSE
+                pyautogui.PAUSE = 0.05 
+                for _ in range(cantidad):
+                    self._chequear_estado() # Chequeo incluso ENTRE tabs masivos
+                    pyautogui.press('tab')
+                pyautogui.PAUSE = original_pause
             else:
-                pyautogui.press(tecla, presses=veces)
+                pyautogui.press('tab', presses=cantidad)
 
-    def _esperar(self, segundos):
-        """Pausa explicita."""
+    def _enter(self):
+        self._chequear_estado() # <--- VALIDACIÓN ANTES DE ACTUAR
         if self.modo_prueba:
-            self._log(f"⏳ ESPERA TÉCNICA: {segundos} seg")
+            self._log("🔘 ENTER")
         else:
-            time.sleep(segundos)
-
-    def procesar_producto(self, datos, indice):
+            pyautogui.press('enter')
+    
+    def _esperar_carga(self, tiempo=1.0):
         """
-        Ejecuta el flujo completo para UN producto (una fila del Excel).
-        :param datos: Diccionario o Serie de Pandas con los datos de la fila.
-        :param indice: Número de fila para referencia.
+        Detiene el robot X segundos para esperar que el sistema procese algo.
         """
-        self._log(f"--- INICIANDO PRODUCTO #{indice} ---")
-
-        # --- FASE 1: Identificación y Clasificación ---
-        # Asumo nombres de columnas del Excel basados en tu descripción
-        self._escribir(datos.get('Rubro', ''))
-        self._presionar('enter') # Usualmente enter o tab para pasar campo? Asumiré TAB por defecto abajo si no
-        self._presionar('tab') 
+        self._chequear_estado() # Verificar si hay pausa antes de esperar
         
-        self._escribir(datos.get('Clasificacion', ''))
-        self._presionar('tab')
-
-        self._escribir(datos.get('Linea', ''))
-        # Nota: El correlativo se autocompleta. Damos un respiro al sistema.
-        self._esperar(1.0) 
-        self._presionar('tab', veces=1) # Acción Fase 1 final
-
-        # --- FASE 2: Datos de Identificación ---
-        self._escribir(datos.get('CodigoBarras', '')) # Campo 5
-        self._presionar('tab', veces=5) # Acción 6
-
-        # Campo 7: Descripción con Validación (Max 25 chars)
-        descripcion = str(datos.get('Descripcion', ''))
-        if len(descripcion) > 25:
-            self._log(f"⚠️ AVISO: Descripción truncada (era {len(descripcion)} chars)")
-            descripcion = descripcion[:25]
-        self._escribir(descripcion)
-        
-        self._presionar('tab', veces=6) # Acción 8
-
-        self._escribir(datos.get('Marca', '')) # Campo 9
-        self._presionar('tab', veces=5) # Acción 10
-
-        # --- FASE 3: Propiedades Físicas y Tributarias ---
-        self._escribir(datos.get('Peso', '')) # Campo 11
-        self._presionar('tab', veces=6) # Acción 12
-
-        # Campo 13: Impuesto (Condicional)
-        impuesto = datos.get('Impuesto', '')
-        # Pandas a veces pone 'nan' si está vacío, validamos eso
-        if impuesto and str(impuesto).lower() != 'nan': 
-            self._escribir(impuesto)
+        if self.modo_prueba:
+            self._log(f"⏳ ESPERA TÉCNICA: {tiempo} segundos")
         else:
-            self._log("ℹ️ Impuesto vacío en Excel, saltando escritura.")
+            time.sleep(tiempo)
+
+    def procesar_producto(self, fila, indice):
+        self._chequear_estado() # <--- VALIDACIÓN INICIAL
         
-        self._presionar('tab', veces=4) # Acción 14
+        self._log(f"--- PRODUCTO #{indice} ({fila.get('Descripcion', 'Sin Nombre')}) ---")
 
-        # --- FASE 4: Unidades y Logística ---
-        self._escribir(datos.get('Compra', '')) # Campo 15 (KG, CJ, UN)
-        self._presionar('tab') # Asumo tab entre compra y venta
-        self._escribir(datos.get('Venta', ''))  # Campo 16
-        self._presionar('tab', veces=1) # Acción 17
+        # FASE 1
+        self._esperar_carga(1)
+        self._escribir(fila['Rubro'])
+        self._escribir(fila['Clasificacion'])
+        self._escribir(fila['Linea'])
+        self._esperar_carga(1)
+        self._tab(1) 
 
-        self._escribir(datos.get('Capacidad', '')) # Campo 18
-        self._presionar('tab', veces=2) # Acción 19
+        # FASE 2
+        self._esperar_carga(1)
+        self._escribir(fila['CodigoBarras'])
+        self._tab(1)
+        self._esperar_carga(1)
+        self._tab(1)
+        self._esperar_carga(1)
+        self._tab(1)
+        self._esperar_carga(1)
+        self._tab(1)
+        self._esperar_carga(1)
+        self._tab(1)
+        self._esperar_carga(1)
 
-        self._escribir(datos.get('Embalaje', '')) # Campo 20
-        self._presionar('tab', veces=12) # Acción 21
-
-        # --- FASE 5: Finalización ---
-        # Campo 22: Bruto (Valor fijo 15)
-        self._escribir("15") 
+        desc = str(fila['Descripcion'])
+        if len(desc) > 25: desc = desc[:25]
+        self._escribir(desc)
+        self._tab(6)
         
-        # Acción final masiva
-        self._presionar('tab', veces=41) 
-        self._presionar('enter')
+        self._escribir(fila['Marca'])
+        self._tab(6)
+
+        # FASE 3
+        self._escribir(fila['Peso'])
+        self._tab(7)
+        self._escribir(fila['Impuesto'])
+        self._tab(4)
+
+        # FASE 4
+        self._escribir(fila['Compra'].upper())
+        self._tab(1)
+        self._escribir(fila['Venta'])
+        self._tab(1)
+        self._escribir(fila['Capacidad'])
+        self._tab(3)
+        self._escribir(fila['Embalaje_1'])
+        self._tab(1)
+        self._escribir(fila['Embalaje_2'])
+        self._tab(12)
+
+        # FASE 5
+        self._escribir("15")
+        self._tab(41)
+        self._enter()
+        self._esperar_carga(1)
         
-        self._log(f"--- PRODUCTO #{indice} FINALIZADO ---\n")
+        self._log(f"--- FIN PRODUCTO #{indice} ---\n")

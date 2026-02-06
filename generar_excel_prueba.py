@@ -6,32 +6,33 @@ os.makedirs("data", exist_ok=True)
 
 # Datos de prueba simulando productos de supermercado/tienda
 datos = {
-    'Rubro': [21,21],
-    'Clasificacion': ['001','001'],
-    'Linea': ['004','004'],
+    'Rubro': [22],
+    'Clasificacion': ['001'],
+    'Linea': ['006'],
     'CodigoBarras': [
-        '7800143152603',
-        '5437265423018' 
+        '7800143152603' 
     ],
     'Descripcion': [
-                        
-        'CAJA ORG PLASTICA',
-        'USB SLIM KEYBOARD'                            
+        'Producto correcto prueba',          
+    
+                                 
     ],
     'Marca': [
          '1250',
-         '1250'
+         
+         
     ],
-    'Peso': [13,1],
+    'Peso': [11],
     'Impuesto': [
         'ILA',
-        'ILA'   # Con impuesto
+        
+          # Con impuesto
     ],
-    'Compra': ['KG','UN'],
-    'Venta': ['UN','KG'],
-    'Capacidad': [1000,1000],
-    'Embalaje_1': [1,1],
-    'Embalaje_2': [99,99]
+    'Compra': ['KG',],
+    'Venta': ['UN',],
+    'Capacidad': [111,],
+    'Embalaje_1': [1,],
+    'Embalaje_2': [99,]
 }
 
 # Crear DataFrame

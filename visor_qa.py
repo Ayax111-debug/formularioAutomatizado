@@ -26,27 +26,44 @@ class VisorQA:
     def registrar_evento(self, event):
         tecla = event.keysym
         
-        # Ignorar teclas de sistema (Shift, Control, Alt) para que no ensucien el log
+        # Ignorar teclas de sistema aisladas
         if tecla in ["Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R", "Caps_Lock"]:
             return "break"
 
+        # --- LOGICA DE TECLAS ESPECIALES ---
+
         if tecla == "Tab":
             self.text_area.insert(tk.END, " [TAB] ", "tag_tab")
-            self.text_area.tag_config("tag_tab", foreground="#FFFF00")
+            self.text_area.tag_config("tag_tab", foreground="#FFFF00") # Amarillo
             
         elif tecla == "Return":
             self.text_area.insert(tk.END, "\n [ENTER] \n", "tag_enter")
-            self.text_area.tag_config("tag_enter", foreground="#FF5555")
+            self.text_area.tag_config("tag_enter", foreground="#FF5555") # Rojo
+
+        # --- AQUÍ ESTÁN LAS FLECHAS Y BORRADO ---
+        elif tecla == "Right":
+            self.text_area.insert(tk.END, " [→] ", "tag_arrow")
+            self.text_area.tag_config("tag_arrow", foreground="#00FFFF") # Cyan
             
+        elif tecla == "Left":
+            self.text_area.insert(tk.END, " [←] ", "tag_arrow")
+            self.text_area.tag_config("tag_arrow", foreground="#00FFFF")
+
+        elif tecla == "Delete":
+            self.text_area.insert(tk.END, " [DEL] ", "tag_del")
+            self.text_area.tag_config("tag_del", foreground="#FF00FF") # Magenta
+
+        elif tecla == "BackSpace":
+            self.text_area.insert(tk.END, " [BACK] ", "tag_del")
+            self.text_area.tag_config("tag_del", foreground="#FF00FF")
+
         else:
-            # Solo insertar si es un caracter imprimible y no está vacío
+            # Solo insertar si es un caracter imprimible
             if event.char and len(event.char) > 0:
                  self.text_area.insert(tk.END, event.char)
             
         self.text_area.see(tk.END)
         
-        # --- LA LÍNEA MÁGICA ---
-        # Esto evita que Windows inserte la tecla por su cuenta (evita el duplicado)
         return "break" 
 
 if __name__ == "__main__":

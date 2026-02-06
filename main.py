@@ -1,128 +1,94 @@
-import tkinter as tk
-from tkinter import filedialog, messagebox
 import pandas as pd
 import time
 import sys
+import os
+from datetime import datetime
+
+# Importamos tus módulos
 from src.robot_engine import RobotFormulario
+from src.reporte import generar_reporte_final  # <--- NUEVO IMPORT
 
-def validar_columnas(df):
-    """
-    Verifica que el Excel tenga las columnas críticas que el robot necesita.
-    Retorna (True, "") si todo está bien, o (False, mensaje_error).
-    """
-    # Estas deben coincidir EXACTAMENTE con las que usamos en robot_engine.py
-    columnas_requeridas = [
-        'Rubro', 'Clasificacion', 'Linea', 'CodigoBarras', 
-        'Descripcion', 'Marca', 'Peso', 'Impuesto', 
-        'Compra', 'Venta', 'Capacidad', 'Embalaje'
-    ]
+def ejecutar_carga_completa():
+    print("🤖 INICIANDO EJECUCIÓN MASIVA CON REPORTE FINAL")
     
-    faltantes = [col for col in columnas_requeridas if col not in df.columns]
-    
-    if faltantes:
-        return False, f"Faltan columnas en el Excel:\n{', '.join(faltantes)}"
-    return True, ""
-
-def main():
-    # 1. Configuración de la ventana (oculta)
-    root = tk.Tk()
-    root.withdraw()
-
-    # 2. Selección del archivo
-    ruta_excel = filedialog.askopenfilename(
-        title="Selecciona la Planilla de Carga (Excel)",
-        filetypes=[("Archivos Excel", "*.xlsx *.xls")]
-    )
-
-    if not ruta_excel:
-        print("Operación cancelada por el usuario.")
+    # 1. Verificar datos
+    ruta_excel = "data/ejemplo_carga.xlsx"
+    if not os.path.exists(ruta_excel):
+        print(f"❌ Error: No encuentro el Excel en {ruta_excel}")
         return
 
-    # 3. Lectura del Excel
+    # 2. Instanciar el Robot (Modo Producción)
+    bot = RobotFormulario(modo_prueba=False, velocidad=0.3, titulo_ventana="Progress")
+
+    # 3. Cargar Excel
     try:
-        df = pd.read_excel(ruta_excel)
-        # Limpieza básica: convertir NaN a string vacío para evitar errores
-        df = df.fillna('') 
+        df = pd.read_excel(ruta_excel, dtype=str).fillna('')
     except Exception as e:
-        messagebox.showerror("Error de Lectura", f"No se pudo leer el archivo:\n{e}")
+        print(f"❌ Error al leer el Excel de entrada: {e}")
         return
 
-    # 4. Validación de Columnas
-    es_valido, mensaje = validar_columnas(df)
-    if not es_valido:
-        messagebox.showerror("Excel Inválido", mensaje)
-        return
+    total = len(df)
+    print(f"🚀 Procesando {total} registros...")
+    print("-" * 50)
 
-    # 5. Decisión: ¿Prueba o Realidad?
-    es_prueba = messagebox.askyesno(
-        "Configuración de Ejecución",
-        f"Se cargaron {len(df)} registros.\n\n"
-        "¿Quieres ejecutar en MODO PRUEBA (Dry Run)?\n\n"
-        "SÍ = Solo genera un archivo de texto (Seguro).\n"
-        "NO = Toma el control del mouse y escribe (Cuidado)."
-    )
-
-    # 6. Inicializar el Robot
-    # Velocidad 0.5 es un buen punto de partida para Progress
-    bot = RobotFormulario(modo_prueba=es_prueba, velocidad=0.5)
-
-    if not es_prueba:
-        confirmacion = messagebox.askokcancel(
-            "Última Advertencia",
-            "⚠️ MODO REAL ACTIVADO ⚠️\n\n"
-            "1. Abre el software de la empresa.\n"
-            "2. Pon el cursor en el campo 'RUBRO'.\n"
-            "3. Al dar OK, tendrás 5 segundos para cambiar de ventana.\n"
-            "4. Mueve el mouse a la esquina superior izquierda para abortar."
-        )
-        if not confirmacion:
-            return
-        
-        print("⏳ INICIANDO EN 5 SEGUNDOS... CAMBIA DE VENTANA AHORA.")
-        time.sleep(5)
-
-    # 7. Ejecución del Bucle
-    print("🚀 Iniciando proceso automatizado...")
-    
-    registros_exitosos = 0
-    errores = 0
+    # --- LISTA PARA ACUMULAR LOS RESULTADOS ---
+    bitacora_resultados = [] 
 
     try:
         for index, row in df.iterrows():
-            # Sumamos 2 al index porque Excel empieza en fila 1 y tiene cabecera
-            numero_fila_excel = index + 2 
+            fila_n = index + 2
+            sku = row.get('CodigoBarras', 'N/A')
+            desc = row.get('Descripcion', 'Sin Nombre')
             
+            # Estructura base del reporte para esta fila
+            resultado_fila = {
+                "Fila": fila_n,
+                "Codigo": sku,
+                "Producto": desc,
+                "Estado": "PENDIENTE",
+                "Detalle": "",
+                "Hora": datetime.now().strftime("%H:%M:%S")
+            }
+
             try:
-                bot.procesar_producto(row, numero_fila_excel)
-                registros_exitosos += 1
+                # EJECUCIÓN DEL ROBOT
+                # El robot retorna True (Éxito) o False (Error controlado/Saltado)
+                exito = bot.procesar_producto(row, fila_n)
                 
-                # Pequeña pausa entre productos para que el sistema respire
-                if not es_prueba:
-                    time.sleep(1.5) 
-                    
-            except Exception as e:
-                errores += 1
-                print(f"❌ Error en fila {numero_fila_excel}: {e}")
-                # Aquí podrías decidir si parar o seguir. Por ahora seguimos.
+                if exito:
+                    resultado_fila["Estado"] = "EXITOSO"
+                    resultado_fila["Detalle"] = "Carga OK"
+                else:
+                    resultado_fila["Estado"] = "FALLIDO"
+                    resultado_fila["Detalle"] = "Validación Negocio (Duplicado/Error Form)"
+
+                # Pausa técnica entre productos
+                time.sleep(1)
+
+            except Exception as e_tecnico:
+                # Si explota el código (crash), lo capturamos aquí
+                resultado_fila["Estado"] = "ERROR CRITICO"
+                resultado_fila["Detalle"] = str(e_tecnico)
+                print(f"❌ CRASH en fila {fila_n}: {e_tecnico}")
+
+            # GUARDAMOS LA FICHA EN LA BITÁCORA
+            bitacora_resultados.append(resultado_fila)
 
     except KeyboardInterrupt:
-        print("\n🛑 Ejecución detenida manualmente.")
-        messagebox.showwarning("Interrupción", "El proceso fue detenido por el usuario.")
-    except pyautogui.FailSafeException:
-        print("\n🛑 FAILSAFE ACTIVADO: Mouse en esquina de seguridad.")
-        messagebox.showerror("Emergencia", "Se activó el FailSafe. Proceso abortado.")
-
-    # 8. Reporte Final
-    mensaje_final = (
-        f"Proceso finalizado.\n\n"
-        f"✅ Procesados: {registros_exitosos}\n"
-        f"❌ Errores: {errores}\n"
-    )
+        print("\n🛑 Proceso detenido manualmente.")
     
-    if es_prueba:
-        mensaje_final += f"\nRevisa el log en: {bot.log_path}"
-    
-    messagebox.showinfo("Resumen", mensaje_final)
+    finally:
+        print("-" * 50)
+        print("🏁 PROCESO FINALIZADO.")
+        
+        # 4. GENERAR EL EXCEL FINAL (AQUÍ OCURRE LA MAGIA)
+        if bitacora_resultados:
+            print("💾 Guardando evidencia...")
+            generar_reporte_final(bitacora_resultados)
+        else:
+            print("⚠️ No se procesaron registros.")
 
 if __name__ == "__main__":
-    main()
+    import pyautogui
+    pyautogui.FAILSAFE = True
+    ejecutar_carga_completa()
